@@ -1,11 +1,10 @@
-# bookmarks_manager.py - Logique de gestion des favoris
 import json
 import os
 import shutil
 import threading
 import subprocess
-from tkinter import messagebox, Tk, Entry, Label, Button, Listbox, StringVar, Toplevel
-from tkinter import simpledialog, Scrollbar, PhotoImage
+from tkinter import messagebox, Tk, Entry, Label, Button, Listbox, StringVar, Toplevel, BooleanVar, Checkbutton, Frame
+from tkinter import Scrollbar
 from pystray import Icon, MenuItem, Menu
 from PIL import Image, ImageTk
 
@@ -34,7 +33,6 @@ def load_data():
             raise ValueError("Incorrect structure")
         return data
     except (json.JSONDecodeError, ValueError, FileNotFoundError):
-        # Réinitialise le fichier si erreur de lecture/structure
         initialize_bookmarks_file()
         with open(JSON_PATH, 'r', encoding="utf-8") as f:
             return json.load(f)
@@ -91,7 +89,6 @@ def open_bookmark(url):
     browser = data.get("preferred_browser", "chrome")
     browser_command = {}
 
-    # Définir les commandes de navigateur disponibles
     if is_browser_available("chrome"):
         browser_command["chrome"] = ["chrome", "--app=" + url]
     if is_browser_available("firefox"):
@@ -110,20 +107,54 @@ def open_bookmark(url):
 # Créer une interface graphique de gestion des favoris
 main_window = Tk()
 main_window.title("Gestionnaire de Favoris SimplyLaunch")
-main_window.geometry("500x500")
+main_window.geometry("600x400")
+
+# Chargement de l'icône de l'application
+try:
+    main_icon = ImageTk.PhotoImage(Image.open(ICON_PATH))
+    main_window.iconphoto(False, main_icon)
+except (FileNotFoundError, IOError):
+    main_icon = None
 
 # Variables Tkinter
 title_var = StringVar()
 url_var = StringVar()
+show_at_startup_var = BooleanVar()
 
-# Fonction pour mettre à jour la liste des favoris dans la fenêtre
-bookmark_listbox = Listbox(main_window, width=50, height=15)
-bookmark_listbox.pack(pady=10, side='left', fill='both')
+# Charger l'état de la case "Toujours afficher au démarrage"
+data = load_data()
+show_at_startup_var.set(data.get("show_at_startup", True))
 
-scrollbar = Scrollbar(main_window)
-scrollbar.pack(side='right', fill='y')
+# Structure principale de la fenêtre
+main_frame = Frame(main_window, padx=10, pady=10)
+main_frame.pack(fill="both", expand=True)
+
+# Liste des favoris avec scrollbar (à gauche)
+bookmark_frame = Frame(main_frame)
+bookmark_frame.pack(side="left", fill="both", expand=True)
+
+bookmark_listbox = Listbox(bookmark_frame, width=50, height=20)
+bookmark_listbox.pack(side="left", fill="both", expand=True)
+
+scrollbar = Scrollbar(bookmark_frame)
+scrollbar.pack(side="right", fill="y")
 bookmark_listbox.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=bookmark_listbox.yview)
+
+# Panneau de commande (à droite)
+command_frame = Frame(main_frame, padx=10)
+command_frame.pack(side="right", fill="y")
+
+# Champs d'entrée pour le titre et l'URL dans command_frame
+title_label = Label(command_frame, text="Titre:")
+title_label.pack(anchor="w")
+title_entry = Entry(command_frame, textvariable=title_var, width=30)
+title_entry.pack()
+
+url_label = Label(command_frame, text="URL:")
+url_label.pack(anchor="w")
+url_entry = Entry(command_frame, textvariable=url_var, width=30)
+url_entry.pack()
 
 def refresh_bookmark_list():
     bookmark_listbox.delete(0, 'end')
@@ -181,16 +212,7 @@ def choose_browser():
     if is_browser_available("safari"):
         Button(browser_window, text="Safari", command=lambda: set_browser("safari")).pack(pady=5)
 
-# Champs d'entrée pour le titre et l'URL
-title_label = Label(main_window, text="Titre:")
-title_label.pack()
-title_entry = Entry(main_window, textvariable=title_var, width=50)
-title_entry.pack()
 
-url_label = Label(main_window, text="URL:")
-url_label.pack()
-url_entry = Entry(main_window, textvariable=url_var, width=50)
-url_entry.pack()
 
 # Icônes pour ajouter et supprimer des favoris
 try:
@@ -203,25 +225,42 @@ except (FileNotFoundError, IOError):
     remove_icon = None
 
 # Boutons pour ajouter, supprimer et ouvrir les favoris
-add_button = Button(main_window, image=add_icon, command=on_add_bookmark, compound='left')
-add_button.pack(pady=5)
+add_button = Button(command_frame, image=add_icon, command=on_add_bookmark, compound='left', text="Ajouter", padx=5)
+add_button.pack(pady=5, fill="x")
 
-remove_button = Button(main_window, image=remove_icon, command=on_remove_bookmark, compound='left')
-remove_button.pack(pady=5)
+remove_button = Button(command_frame, image=remove_icon, command=on_remove_bookmark, compound='left', text="Supprimer", padx=5)
+remove_button.pack(pady=5, fill="x")
 
-open_button = Button(main_window, text="Ouvrir", command=on_open_bookmark)
-open_button.pack(pady=5)
+open_button = Button(command_frame, text="Ouvrir", command=on_open_bookmark)
+open_button.pack(pady=5, fill="x")
+
+# Case à cocher "Toujours afficher au démarrage"
+def on_show_at_startup_toggle():
+    data = load_data()
+    data["show_at_startup"] = show_at_startup_var.get()
+    save_data(data)
+
+show_at_startup_checkbutton = Checkbutton(command_frame, text="Toujours afficher au démarrage",
+                                          variable=show_at_startup_var,
+                                          command=on_show_at_startup_toggle)
+show_at_startup_checkbutton.pack(pady=10, anchor="w")
 
 # Initialisation de la liste des favoris
+def refresh_bookmark_list():
+    bookmark_listbox.delete(0, 'end')
+    data = load_data()
+    for bookmark in data.get("bookmarks", []):
+        bookmark_listbox.insert('end', f"{bookmark['name']} - {bookmark['url']}")
+
 refresh_bookmark_list()
 
 # Fonction pour lancer le systray
 def run_systray():
     def quit_application(icon, item):
         icon.stop()
-        main_window.quit()
+        main_window.destroy()
 
-    def toggle_main_window(icon, item):
+    def toggle_main_window(icon, item=None):
         if main_window.state() == "withdrawn":
             main_window.after(0, main_window.deiconify)
         else:
@@ -237,15 +276,35 @@ def run_systray():
         MenuItem("Quitter", quit_application)
     )
 
-    systray_icon = Icon("SimplyLaunch", Image.open(ICON_PATH), menu=menu)
+    systray_icon = Icon("SimplyLaunch", Image.open(ICON_PATH), menu=menu, on_double_click=toggle_main_window)
     systray_icon.run()
+
+# Fonction pour fermer dans le systray
+def on_close():
+    main_window.withdraw()
+
+main_window.protocol("WM_DELETE_WINDOW", on_close)
 
 # Lancer le systray dans un thread secondaire
 def start_systray():
     threading.Thread(target=run_systray, daemon=True).start()
 
-# Lancement du systray
 start_systray()
 
-# Lancement de l'interface graphique principale
+# Double-clic pour ouvrir le bookmark
+def on_double_click(event):
+    selected = bookmark_listbox.curselection()
+    if selected:
+        item_text = bookmark_listbox.get(selected)
+        url = item_text.split(" - ")[1]
+        open_bookmark(url)
+
+bookmark_listbox.bind("<Double-1>", on_double_click)
+
+# Affichage conditionnel au démarrage
+if show_at_startup_var.get():
+    main_window.deiconify()
+else:
+    main_window.withdraw()
+
 main_window.mainloop()

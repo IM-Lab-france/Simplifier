@@ -1,0 +1,18 @@
+{
+    "bookmarks": [
+        {
+            "name": "ChatGPT",
+            "url": "https://chatgpt.com/"
+        },
+        {
+            "name": "Youtube",
+            "url": "https://www.youtube.com/"
+        }
+    ],
+    "show_at_startup": false,
+    "window_position": {
+        "x": 1078,
+        "y": 1437
+    },
+    "preferred_browser": "chrome"
+}
